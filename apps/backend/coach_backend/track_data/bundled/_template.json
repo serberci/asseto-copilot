@@ -1,0 +1,6 @@
+{
+  "track_id": "REPLACE_WITH_THE_GAME_TRACK_ID",
+  "calibrated": false,
+  "note": "Copy this file to the data/tracks directory, set calibrated to true only after checking entry, apex, and exit against recorded laps. Do not invent progress values.",
+  "corners": []
+}

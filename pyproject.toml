@@ -2,6 +2,7 @@
 name = "assetto-corsa-coach"
 version = "0.1.0"
 description = "Local-first driving coach for original Assetto Corsa"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
@@ -12,6 +13,7 @@ package = false
 members = [
   "packages/telemetry-schema",
   "apps/windows-agent",
+  "apps/backend",
 ]
 
 [dependency-groups]
@@ -21,5 +23,6 @@ dev = ["pytest>=8.3"]
 testpaths = [
   "packages/telemetry-schema/tests",
   "apps/windows-agent/tests",
+  "apps/backend/tests",
 ]
 addopts = "-q --import-mode=importlib"

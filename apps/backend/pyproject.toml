@@ -1,0 +1,27 @@
+[project]
+name = "coach-backend"
+version = "0.1.0"
+description = "AI host for Assetto Corsa Coach"
+requires-python = ">=3.12"
+dependencies = [
+  "telemetry-schema",
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+  "pydantic>=2.6",
+  "numpy>=2",
+  "pyarrow>=18",
+  "httpx>=0.27",
+]
+
+[project.scripts]
+coach-backend = "coach_backend.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["coach_backend"]
+
+[tool.uv.sources]
+telemetry-schema = { workspace = true }
