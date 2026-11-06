@@ -1,0 +1,17 @@
+# The API can run in Docker. Ollama, speech engines, and the Windows agent stay on the host.
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      COACH_DATA_DIR: /data
+      COACH_AUTH_TOKEN: ${COACH_AUTH_TOKEN:?set COACH_AUTH_TOKEN}
+      COACH_OLLAMA_HOST: ${COACH_OLLAMA_HOST:-}
+      COACH_OLLAMA_MODEL: ${COACH_OLLAMA_MODEL:-llama3.2:3b}
+    volumes:
+      - coach-data:/data
+volumes:
+  coach-data:
