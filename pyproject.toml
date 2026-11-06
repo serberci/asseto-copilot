@@ -1,0 +1,23 @@
+[project]
+name = "assetto-corsa-coach"
+version = "0.1.0"
+description = "Local-first driving coach for original Assetto Corsa"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+  "packages/telemetry-schema",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = [
+  "packages/telemetry-schema/tests",
+]
+addopts = "-q --import-mode=importlib"
