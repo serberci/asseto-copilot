@@ -1,0 +1,201 @@
+ASSETTO CORSA COACH — CONVERSATION CONTEXT
+=============================================
+
+Purpose
+-------
+The user is a web developer (PHP developer) who wants to build an app that connects to an Assetto Corsa training session and acts as a real-time driving copilot. It should analyse driving metrics, proactively provide hints, and answer spoken questions.
+
+Confirmed user decisions
+------------------------
+- Game: Original Assetto Corsa (not ACC).
+- Architecture: Two computers on the same local network initially.
+  1. Gaming PC runs Assetto Corsa and a lightweight background agent.
+  2. AI host initially runs on a MacBook and receives telemetry.
+- MacBook: Apple Silicon M4/M5 family, 24 GB unified memory.
+- Copilot interaction: Both proactive coaching hints and voice questions/answers.
+- Main goal: Improve lap times and driving technique.
+- Future direction: The second/AI host may move to a cloud/VPS system. The gaming PC agent must therefore have a configurable destination and should not depend on the receiver being a MacBook or being on the LAN.
+
+Architecture discussed
+----------------------
+Gaming PC:
+- A standalone installable Windows desktop application named **Assetto Corsa Coach Agent**, rather than a script users must launch manually.
+- Python telemetry core, separated from the desktop presentation layer.
+- PySide6/Qt desktop UI with Windows system-tray support.
+- Main status view for game detection, backend connectivity, telemetry activity/rate, and audio readiness.
+- Settings UI for configurable backend URL/host and port, authentication, logging, auto-start, microphone, output device, and push-to-talk.
+- Optional launch at Windows login and start minimized to tray.
+- Package the Python runtime and dependencies into a Windows build (PyInstaller is the initial candidate) and create a conventional installer (Inno Setup is the initial candidate).
+- Keep config/logs in a per-user application-data location and preserve them across upgrades by default.
+- Run in the logged-in user's session, not as a Windows service initially, because microphone/headset access is needed.
+- Reads original Assetto Corsa shared memory:
+  - acpmf_physics
+  - acpmf_graphics
+  - acpmf_static
+- Windows APIs proposed: OpenFileMappingW, MapViewOfFile, UnmapViewOfFile, CloseHandle.
+- Use ctypes structures matching verified SDK/header layouts; do not guess offsets.
+- Normalize game-specific data into a versioned protocol.
+- Keep a short ring buffer and local JSONL diagnostic recording.
+- Publish over WebSockets to a configurable endpoint.
+- Automatic game detection and reconnection.
+- Microphone capture and headphone playback should happen on the gaming PC because the headset is expected to be connected there.
+- Keep the UI thin: telemetry parsing, networking, and audio processing belong in independently testable core modules/workers, never in the UI thread.
+- The backend destination must be configurable so the AI host can move from the MacBook/LAN to a VPS/cloud host without code changes.
+
+MacBook:
+- FastAPI backend, initially a modular monolith rather than microservices.
+- WebSocket ingestion, session/lap management, deterministic analysis, coaching event generation, copilot orchestration, STT/TTS endpoints.
+- React + TypeScript dashboard accessible from the gaming PC browser.
+- SQLite for structured session/lap/track/coaching metadata.
+- Parquet for high-volume telemetry recordings.
+- Ollama for local LLM inference.
+- STT candidate: faster-whisper or an Apple-Silicon-friendly alternative.
+- TTS candidate: Piper or another suitable local engine.
+- Native macOS execution recommended initially for Ollama and audio hardware access; Docker Compose may be used for suitable backend components.
+- MacBook has 24 GB unified memory. Benchmark a single modest quantized LLM first; do not assume a large model or multiple simultaneously loaded models will fit comfortably.
+
+Core design principles
+----------------------
+- Separate continuous telemetry processing from LLM conversation.
+- Deterministic analysis calculates metrics; the LLM explains findings and handles dialogue.
+- The telemetry pipeline must never block waiting for an LLM.
+- Keep the protocol versioned, timestamped, sequenced, and explicit about units.
+- Use authenticated WebSockets on the LAN; use TLS and preferably a VPN such as WireGuard for remote/cloud operation.
+- Build and validate real telemetry before adding AI features.
+- Spoken advice must be short, actionable, evidence-based, non-repetitive, and timed to avoid distracting the driver.
+
+Telemetry targets discussed (initial tuning values, not guarantees)
+--------------------------------------------------------------------
+- Physics sampling target: up to ~100 Hz, subject to actual source update rate.
+- Graphics sampling target: ~30–60 Hz, subject to actual source update rate.
+- Network publication target: ~20 Hz.
+- Agent ring buffer: ~30 seconds.
+- Record complete laps and retain raw telemetry for replay/re-analysis.
+- Physics and graphics sources should be read/timestamped independently if their update rates differ.
+
+Analysis approach
+----------------
+- Store timestamped lap samples with normalized track progress.
+- Compare current lap against a valid reference lap, initially the driver's best lap for the same car/track/configuration.
+- Align laps on a common progress grid using interpolation.
+- Delta formula discussed:
+  delta_time(progress) = current_elapsed_time(progress) - reference_elapsed_time(progress).
+  Positive means slower than reference; negative means faster.
+- Start with calibrated corner boundaries (entry/apex/exit progress values). Normalized track progress alone does not identify corners.
+- Initial corner metrics: braking onset, brake duration/peak, minimum speed and location, throttle onset, full-throttle point, entry/minimum/exit speed, corner time.
+- Initial coaching rules: braking earlier/later (only when comparable), excessive braking, coasting, late throttle, low exit speed, lap/sector inconsistency.
+- Every coaching observation should carry evidence, reference values, confidence, priority/severity, and estimated time impact only when reliably measurable.
+- Do not recommend braking later or carrying more speed without checking comparability and safety. If evidence is insufficient, say so.
+
+Voice/coplay approach
+---------------------
+- Push-to-talk first; wake-word detection later.
+- Windows captures headset microphone and plays returned audio.
+- MacBook performs STT -> context retrieval -> Ollama -> TTS.
+- Stream/chunk responses where practical to reduce perceived latency.
+- LLM gets controlled context functions, not unrestricted raw telemetry/database access:
+  get_current_session()
+  get_current_lap()
+  get_current_corner()
+  get_current_lap_delta()
+  get_corner_comparison(corner_id)
+  get_recent_coaching_events()
+  get_best_lap()
+- Structured copilot output proposed: intent, spoken_response, severity, priority, evidence, trigger_tts.
+- Add coaching priority, cooldown, deduplication, mute/quiet periods, and defer low-priority messages to safe windows/straights.
+
+Proposed repository structure
+-----------------------------
+assetto-corsa-coach/
+  apps/
+    gaming-agent/
+    backend/
+    frontend/
+  packages/
+    telemetry-schema/
+  infrastructure/
+  docs/
+  PLAN.md
+  context.txt
+  README.md
+
+MVP scope
+---------
+- Original Assetto Corsa only.
+- One driver, initially one car/track for calibration.
+- Shared-memory integration.
+- Live telemetry and WebSocket transport.
+- Session/lap recording.
+- Lap comparison and initial corner analysis.
+- React live dashboard.
+- Text copilot using Ollama.
+- Voice questions via STT/TTS.
+- Proactive coaching with cooldown/priority controls.
+- No ACC, cloud hosting, multi-user support, setup recommendations, advanced tyre modelling, robust understeer/oversteer diagnosis, computer vision, or wake-word activation in the first MVP.
+
+Implementation sequence
+-----------------------
+0. Inspect existing repository conventions; define versioned telemetry schema and fixtures.
+1. Build and validate the Windows telemetry core first: verify shared-memory layouts, read real physics/graphics values, and record a short session to JSONL.
+2. Build the PySide6 Windows desktop shell around the validated core: status view, system tray, settings, and responsive worker-based execution.
+3. Package the Windows application and create an Inno Setup installer; test on a clean Windows environment.
+4. Build MacBook ingestion, session/lap recording, and replay.
+5. Build live React dashboard.
+6. Build lap alignment, comparison, manual corner calibration, and initial coaching rules.
+7. Integrate Ollama text copilot and benchmark models within 24 GB memory.
+8. Add push-to-talk STT/TTS voice round trip.
+9. Add proactive coaching scheduling, cooldowns, and audio safety controls.
+10. Harden reconnection/storage and document future cloud migration.
+
+First task
+----------
+Start with repository inspection and Phase 1 only. Verify the exact shared-memory structures for the installed original Assetto Corsa version, then build a Python proof-of-concept that reads and logs speed, RPM, gear, throttle, brake, steering, lap number, and normalized track position. Record a short real session to JSONL and validate actual values/update rates. Keep the reader independent of the future PySide6 UI. Only after real values are validated should the normalized schema and WebSocket publisher be added. The GUI and installer come next, after the telemetry core is trustworthy.
+
+Estimates previously discussed
+------------------------------
+A rough solo-developer estimate was discussed:
+- Windows agent: 2–3 days.
+- WebSocket ingestion: 1–2 days.
+- Session/lap recording: 2 days.
+- Analysis: 3–5 days.
+- Dashboard: 2–3 days.
+- Ollama copilot: 2–3 days.
+- STT/TTS: 3–4 days.
+- Testing/tuning: 2–4 days.
+These are rough estimates only and depend on shared-memory validation, hardware, and integration complexity.
+
+Important caveats
+-----------------
+- Earlier example telemetry values and Monza corner progress values were illustrative only, not real/calibrated data.
+- Shared-memory structure layouts must be checked against verified source definitions.
+- Sampling rates are targets; measure actual source update rates.
+- Model names/sizes are candidates; verify availability and benchmark on the actual 24 GB MacBook.
+- The plan is a starting design. If adding it to an existing repository, inspect the repository before imposing the proposed layout.
+
+
+Windows application decision (confirmed)
+-----------------------------------------
+The gaming-PC component will be a standalone Windows desktop application named **Assetto Corsa Coach Agent**, not a command-line script users must launch manually.
+
+- UI framework: PySide6/Qt.
+- Runtime architecture: thin desktop UI over independently testable Python core modules for shared memory, telemetry, game detection, networking, configuration, and audio.
+- System tray: show/hide, status, and quit; optional launch at Windows login and start minimized.
+- Main screen: Assetto Corsa/game status, backend connection, telemetry activity/rate, and audio-device readiness.
+- Settings: configurable backend destination, authentication, logging, startup behavior, microphone, output device, and push-to-talk.
+- Audio: microphone capture and TTS playback happen on the gaming PC because the headset is expected to be connected there.
+- Concurrency: telemetry, network, and audio work must not block the UI thread.
+- Packaging: PyInstaller is the initial executable-packaging candidate; Inno Setup is the initial installer candidate. Validate both in a clean Windows environment.
+- User data: keep configuration and logs outside the installation directory and preserve them on upgrades by default.
+- Process model: normal logged-in user application, not a Windows service initially, due to interactive audio-device access.
+- Backend location: configurable; moving the AI host from the MacBook to a VPS/cloud host should only require changing configuration, not rebuilding the agent.
+
+Revised implementation order
+----------------------------
+1. Verify shared-memory layouts and build a Python telemetry proof of concept.
+2. Record and validate a real session as JSONL.
+3. Add normalized schema and WebSocket transport after validating source values.
+4. Build the PySide6 UI/system tray/settings around the telemetry core.
+5. Package as a Windows application and installer.
+6. Continue with MacBook ingestion, dashboard, analysis, copilot, and voice features.
+
+The Windows desktop app is part of the planned MVP deliverable. However, do not let UI or packaging work delay the first task: validate the shared-memory reader against real Assetto Corsa telemetry first.
