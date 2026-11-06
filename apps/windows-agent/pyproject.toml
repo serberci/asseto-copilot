@@ -1,0 +1,26 @@
+[project]
+name = "coach-agent"
+version = "0.1.0"
+description = "Windows desktop agent for Assetto Corsa Coach"
+requires-python = ">=3.12"
+dependencies = [
+  "telemetry-schema",
+  "pydantic>=2.6",
+  "websockets>=13",
+]
+
+[project.optional-dependencies]
+desktop = ["PySide6>=6.6"]
+
+[project.scripts]
+coach-agent = "coach_agent.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["coach_agent"]
+
+[tool.uv.sources]
+telemetry-schema = { workspace = true }

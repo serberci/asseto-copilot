@@ -11,6 +11,7 @@ package = false
 [tool.uv.workspace]
 members = [
   "packages/telemetry-schema",
+  "apps/windows-agent",
 ]
 
 [dependency-groups]
@@ -19,5 +20,6 @@ dev = ["pytest>=8.3"]
 [tool.pytest.ini_options]
 testpaths = [
   "packages/telemetry-schema/tests",
+  "apps/windows-agent/tests",
 ]
 addopts = "-q --import-mode=importlib"
