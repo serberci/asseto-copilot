@@ -140,9 +140,11 @@ Build this on Windows, after the live shared-memory check:
 
 ```sh
 uv sync --all-packages --package coach-agent --extra desktop
-pyinstaller apps/windows-agent/packaging/coach-agent.spec
+uv run --with pyinstaller pyinstaller --noconfirm --distpath apps/windows-agent/dist --workpath apps/windows-agent/build apps/windows-agent/packaging/coach-agent.spec
 ```
 
-Compile `apps/windows-agent/packaging/installer.iss` with Inno Setup. The installer does not delete `%APPDATA%\AssettoCorsaCoachAgent` unless you confirm that at uninstall time. That folder holds settings and diagnostic recordings.
+Compile `apps/windows-agent/packaging/installer.iss` with Inno Setup. The installer is written to `apps/windows-agent/packaging/Output/AssettoCorsaCoachAgent-Setup.exe`. It does not delete `%APPDATA%\AssettoCorsaCoachAgent` unless you confirm that at uninstall time. That folder holds settings and diagnostic recordings.
+
+GitHub Actions can build the same installer on a Windows runner. The workflow is `.github/workflows/windows-installer.yml`. It runs on a manual dispatch and when agent, schema, or lock files change on `main`. The setup file is the artifact `AssettoCorsaCoachAgent-Setup`, kept for 14 days. That build has not seen a live Assetto Corsa session.
 
 There is no automatic update yet. Install the new build over the old one and leave the AppData folder in place.

@@ -39,4 +39,6 @@ uv run coach-agent
 
 `make test` runs pytest. `make backend` starts the host. `make fixture` replays the synthetic session and needs `COACH_AUTH_TOKEN`.
 
+The Windows installer workflow runs on `windows-latest`. It installs the agent with the desktop extra, runs PyInstaller, compiles the Inno Setup script, and uploads `AssettoCorsaCoachAgent-Setup.exe`. Start it with `gh workflow run "Windows installer"` or from the Actions tab. The artifact is untested against a live game session.
+
 Data written at runtime is under `data/` or the agent settings directory. Neither belongs in git.

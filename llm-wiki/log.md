@@ -9,7 +9,7 @@ Built protocol 1.0.0, the Windows reader, the host, the dashboard, and the tests
 Not done, because this machine is not the gaming PC and no model was benchmarked:
 
 - Live shared-memory comparison. See [../docs/validation.md](../docs/validation.md).
-- PyInstaller and Inno Setup compilation.
+- A compiled installer. The GitHub Actions workflow can build it on a Windows runner. The shared-memory layout is still unchecked against a live session.
 - Ollama, faster-whisper, Piper, or any substitute. The audio socket returns `stt_unavailable`. The text path uses the explainer unless `COACH_OLLAMA_HOST` is set.
 - A real track file. `synthetic-oval` is the only calibrated track, and it is fake.
 
