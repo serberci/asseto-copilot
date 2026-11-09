@@ -53,7 +53,7 @@ Reload the dashboard. You should see track `synthetic-oval`, car `synthetic-car`
 On the gaming PC, from this repository:
 
 ```sh
-uv sync --all-packages --package coach-agent --extra desktop
+uv sync --package coach-agent --extra desktop
 ```
 
 Put the same token and the Mac's address in the agent settings. The file is created on first launch:
@@ -139,7 +139,7 @@ The image does not include the dashboard build. Serve the dashboard from the Mac
 Build this on Windows, after the live shared-memory check:
 
 ```sh
-uv sync --all-packages --package coach-agent --extra desktop
+uv sync --package coach-agent --extra desktop
 uv run --with pyinstaller pyinstaller --noconfirm --distpath apps/windows-agent/dist --workpath apps/windows-agent/build apps/windows-agent/packaging/coach-agent.spec
 ```
 

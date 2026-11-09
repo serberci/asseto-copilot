@@ -33,7 +33,7 @@ Expected lines include `physics page 580 bytes`, `speed_kmh=180.0`, `gear=4`, `t
 Desktop extra, on the machine that will show the window:
 
 ```sh
-uv sync --all-packages --package coach-agent --extra desktop
+uv sync --package coach-agent --extra desktop
 uv run coach-agent
 ```
 

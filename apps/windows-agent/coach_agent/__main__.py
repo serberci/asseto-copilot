@@ -109,7 +109,7 @@ def run_desktop(settings: AgentSettings, minimized: bool, settings_dir: Path) ->
         return run_app(settings, minimized=minimized, settings_dir=settings_dir)
     except ImportError as exc:
         print("The desktop extra is not installed. From the repository root run:")
-        print("uv sync --all-packages --package coach-agent --extra desktop")
+        print("uv sync --package coach-agent --extra desktop")
         print(exc)
         return 1
 
