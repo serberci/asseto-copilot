@@ -9,6 +9,7 @@ from telemetry_schema.messages import SCHEMA_VERSION
 
 from coach_backend.analysis import CornerMetrics
 from coach_backend.api import create_app
+from coach_backend.assembler import LapAssembler
 from coach_backend.coaching import Scheduler, comparability, evaluate_corner
 from coach_backend.copilot import ask, answer_audio, is_grounded
 from coach_backend.settings import Settings
@@ -176,3 +177,40 @@ def test_tracks_do_not_include_the_uncalibrated_template(tmp_path):
     assert names == ["synthetic-oval"]
     assert store.tracks.get("REPLACE_WITH_THE_GAME_TRACK_ID") is None
     assert store.tracks.get("synthetic-oval") is not None
+
+
+def test_start_line_wrap_stays_one_lap():
+    messages = [item for item in synthetic_session() if item.type == "telemetry"]
+    in_lap = [item for item in messages if item.payload.lap_number == 1]
+    boundary = next(item for item in messages if item.payload.completed_laps == 1 and item.payload.lap_number == 2)
+    wrap = in_lap[-1].model_copy(
+        update={
+            "timestamp": in_lap[-1].timestamp + timedelta(milliseconds=50),
+            "payload": in_lap[-1].payload.model_copy(update={"normalized_progress": 0.001, "completed_laps": 0}),
+        }
+    )
+    assembler = LapAssembler()
+    finished = None
+    for message in [*in_lap, wrap, boundary]:
+        finished = assembler.add(message) or finished
+    assert finished is not None
+    assert finished.valid
+    assert finished.lap_time_ms == 30000
+    assert "too_few_samples" not in finished.invalid_reasons
+    assert "progress_reset" not in finished.invalid_reasons
+
+
+def test_mid_lap_progress_drop_is_still_rejected():
+    messages = [item for item in synthetic_session() if item.type == "telemetry" and item.payload.lap_number == 1]
+    jump = messages[25].model_copy(
+        update={
+            "timestamp": messages[25].timestamp + timedelta(milliseconds=20),
+            "payload": messages[25].payload.model_copy(update={"normalized_progress": 0.1}),
+        }
+    )
+    assembler = LapAssembler()
+    finished = None
+    for message in [*messages[:26], jump]:
+        finished = assembler.add(message) or finished
+    assert finished is not None
+    assert "progress_reset" in finished.invalid_reasons

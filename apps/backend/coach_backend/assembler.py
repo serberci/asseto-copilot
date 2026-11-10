@@ -50,6 +50,8 @@ class LapAssembler:
             and self._last_progress is not None
             and payload.normalized_progress < self._last_progress - 0.2
         ):
+            if _crossed_start_line(self._last_progress, payload.normalized_progress):
+                return None
             self._reset = True
             finished = self._close(None, message.timestamp)
             self._last_completed = payload.completed_laps
@@ -93,3 +95,9 @@ class LapAssembler:
             started_at=started,
             ended_at=ended_at,
         )
+
+
+def _crossed_start_line(previous: float, progress: float) -> bool:
+    """The start line reports about 0.999 and then 0.000 before the lap counter moves."""
+
+    return previous >= 0.8 and progress <= 0.2
