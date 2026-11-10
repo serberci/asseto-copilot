@@ -12,5 +12,6 @@ Not done, because this machine is not the gaming PC and no model was benchmarked
 - A compiled installer. The GitHub Actions workflow can build it on a Windows runner. The shared-memory layout is still unchecked against a live session.
 - Ollama, faster-whisper, Piper, or any substitute. The audio socket returns `stt_unavailable`. The text path uses the explainer unless `COACH_OLLAMA_HOST` is set.
 - A real track file. `synthetic-oval` is the only calibrated track, and it is fake.
+- A real pro trace. The McLaren files in `track_data/references/` are synthetic test data, not an ACCReplay download.
 
 The next human step is the live diagnose on Windows, then a real track file for one car and one circuit.

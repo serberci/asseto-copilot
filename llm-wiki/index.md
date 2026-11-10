@@ -17,3 +17,4 @@ Notes for a later session. The code and the tests win if a page disagrees with t
 - [0003 Coaching may stay silent](decisions/0003-coaching-silence.md)
 - [0004 The model does not see the database](decisions/0004-model-boundary.md)
 - [0005 Track files are not guessed](decisions/0005-tracks.md)
+- [0006 Pro laps are files we are allowed to keep](decisions/0006-references.md)
