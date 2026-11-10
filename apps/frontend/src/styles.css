@@ -52,10 +52,30 @@ h2 {
   font-size: 0.72rem;
 }
 
-.token, .ask {
+.token, .ask, .login {
   display: flex;
   gap: 0.5rem;
   align-items: end;
+}
+
+.login { margin-top: 1.2rem; flex-wrap: wrap; }
+
+.tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.tabs button { background: #1c1f19; color: #e7e1d5; }
+.tabs button.on { background: #d4a017; color: #1a1404; }
+
+select {
+  background: #1c1f19;
+  color: #f4efe4;
+  border: 1px solid #3a3f34;
+  border-radius: 4px;
+  padding: 0.55rem 0.7rem;
 }
 
 label {
@@ -132,6 +152,45 @@ button:disabled { opacity: 0.45; cursor: default; }
 .brake { background: #d4543c; }
 
 .split { grid-template-columns: 1.1fr 0.9fr; margin-top: 1rem; }
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 7, 0.55);
+  z-index: 20;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(32rem, 100%);
+  height: 100%;
+  overflow: auto;
+  background: #161814;
+  border-left: 1px solid #2d3229;
+  padding: 1.25rem 1.25rem 2.5rem;
+  z-index: 21;
+}
+.drawer h2 { margin-top: 1.4rem; }
+.drawer header h2 {
+  margin-top: 0.2rem;
+  font-size: 1.35rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #e7e1d5;
+}
+.facts { display: grid; grid-template-columns: 7rem 1fr; gap: 0.45rem 0.8rem; margin-top: 1rem; }
+.facts dt {
+  color: #b7ad9a;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.facts dd { margin: 0; }
+.tips { display: grid; gap: 0.7rem; margin-top: 0.7rem; }
+.tips span { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.board { margin-top: 0.8rem; }
+.drivers { margin-top: 0.8rem; }
+.drivers button { margin-left: 0.4rem; }
 
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.45rem 0.2rem; border-bottom: 1px solid #2d3229; }
@@ -155,6 +214,7 @@ li span {
 
 @media (max-width: 800px) {
   header, .readout, .split { grid-template-columns: 1fr; }
+  .drawer header { grid-template-columns: 1fr auto; }
   .readout strong { font-size: 2.4rem; }
   input { min-width: 0; width: 100%; }
 }
