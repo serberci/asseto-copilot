@@ -86,6 +86,117 @@ def _elapsed(progress: float, *, earlier_brake: bool) -> float:
     return base + 0.4 * (progress - 0.40) / 0.20
 
 
+def reference_session(
+    *,
+    game: str,
+    track_id: str,
+    car_model: str,
+    lap_time_ms: int,
+    samples: list[dict],
+    start: datetime | None = None,
+) -> list[HelloMessage | TelemetryMessage]:
+    """One stored lap whose identity can match a bundled pro file.
+
+    Samples are packed close together so the lap stays valid. The recorded lap
+    time is the reference file's lap time, not the packed clock.
+    """
+
+    origin = start or datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+    messages: list[HelloMessage | TelemetryMessage] = [
+        HelloMessage(
+            schema_version=SCHEMA_VERSION,
+            game=game,
+            agent_id="fixture-pro",
+            session_id=None,
+            sequence=0,
+            timestamp=origin,
+            type="hello",
+            payload=HelloPayload(
+                agent_name="Assetto Corsa Coach Agent",
+                agent_version="0.1.0",
+                capabilities=["telemetry"],
+            ),
+        )
+    ]
+    sequence = 1
+
+    def add(sample: dict, *, progress: float, completed: int, lap_number: int, last_lap_time_ms: int | None) -> None:
+        nonlocal sequence
+        moment = origin + timedelta(milliseconds=20 * sequence)
+        slip = float(sample.get("slip") or 0)
+        wheels = _wheels()
+        wheels[0] = wheels[0].model_copy(update={"slip": slip})
+        payload = TelemetryPayload(
+            physics_packet_id=sequence,
+            graphics_packet_id=sequence,
+            physics_read_at=moment,
+            graphics_read_at=moment,
+            physics_stale=False,
+            graphics_stale=False,
+            session_status="live",
+            session_type="practice",
+            track_id=track_id,
+            track_configuration="",
+            track_spline_length_m=7004.0,
+            car_model=car_model,
+            car_skin="default",
+            player_nick="driver",
+            sector_count=3,
+            completed_laps=completed,
+            lap_number=lap_number,
+            current_lap_time_ms=0 if completed else int(round(float(sample.get("progress") or 0) * lap_time_ms)),
+            last_lap_time_ms=last_lap_time_ms,
+            best_lap_time_ms=last_lap_time_ms,
+            normalized_progress=progress,
+            distance_traveled_m=progress * 7004.0,
+            current_sector_index=0 if progress < 0.33 else 1 if progress < 0.66 else 2,
+            last_sector_time_ms=None,
+            in_pit=False,
+            in_pit_lane=False,
+            flag="none",
+            speed_mps=float(sample["speed_mps"]),
+            rpm=int(sample.get("rpm") or 7000),
+            max_rpm=8000,
+            gear_raw=int(sample.get("gear") or 4),
+            throttle=float(sample["throttle"]),
+            brake=float(sample["brake"]),
+            clutch=0.0,
+            steering=float(sample.get("steering") or 0),
+            velocity_mps=(float(sample["speed_mps"]), 0.0, 0.0),
+            acceleration_g=(0.0, 0.0, 0.0),
+            heading_rad=0.0,
+            pitch_rad=0.0,
+            roll_rad=0.0,
+            fuel_l=40.0,
+            turbo_boost=0.0,
+            brake_bias=0.65,
+            wheels=wheels,
+            car_coordinates_m=(progress * 100.0, 0.0, 0.0),
+            number_of_tyres_out=int(sample.get("tyres_out") or 0),
+            surface_grip=1.0,
+            air_temp_c=22.0,
+            road_temp_c=28.0,
+        )
+        messages.append(
+            TelemetryMessage(
+                schema_version=SCHEMA_VERSION,
+                game=game,
+                agent_id="fixture-pro",
+                session_id=None,
+                sequence=sequence,
+                timestamp=moment,
+                type="telemetry",
+                payload=payload,
+            )
+        )
+        sequence += 1
+
+    for sample in samples:
+        add(sample, progress=float(sample["progress"]), completed=0, lap_number=1, last_lap_time_ms=None)
+    add(samples[-1], progress=0.0, completed=1, lap_number=2, last_lap_time_ms=lap_time_ms)
+    return messages
+
+
 def synthetic_session(start: datetime | None = None) -> list[HelloMessage | TelemetryMessage | HeartbeatMessage]:
     """Two complete laps. The second brakes earlier and loses 0.4 s by corner exit."""
 

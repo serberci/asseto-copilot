@@ -1,7 +1,7 @@
 """Versioned telemetry messages shared by the Windows agent and the AI host."""
 
 from telemetry_schema.errors import SchemaError
-from telemetry_schema.fixtures import synthetic_session
+from telemetry_schema.fixtures import reference_session, synthetic_session
 from telemetry_schema.messages import (
     SCHEMA_VERSION,
     SUPPORTED_SCHEMA_VERSIONS,
@@ -37,5 +37,6 @@ __all__ = [
     "WheelSample",
     "gear_label",
     "parse_envelope",
+    "reference_session",
     "synthetic_session",
 ]

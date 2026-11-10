@@ -9,13 +9,16 @@ from telemetry_schema.models import GoodbyePayload, HeartbeatPayload, HelloPaylo
 SCHEMA_VERSION = "1.0.0"
 SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
 GAME = "assetto_corsa"
+# The Windows agent sends only assetto_corsa. The second id is for a synthetic
+# replay of the bundled McLaren pro file. The agent does not read Competizione.
+GameId = Literal["assetto_corsa", "assetto_corsa_competizione"]
 
 
 class _Message(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str
-    game: Literal["assetto_corsa"]
+    game: GameId
     agent_id: str = Field(min_length=1, max_length=80)
     session_id: str | None = Field(default=None, max_length=80)
     sequence: Annotated[int, Field(ge=0)]
