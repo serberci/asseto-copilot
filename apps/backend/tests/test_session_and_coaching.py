@@ -12,6 +12,7 @@ from coach_backend.api import create_app
 from coach_backend.assembler import LapAssembler
 from coach_backend.coaching import Scheduler, comparability, evaluate_corner
 from coach_backend.copilot import ask, answer_audio, is_grounded
+from coach_backend.references import ReferenceLibrary, compare_pro, grip_flags
 from coach_backend.settings import Settings
 from coach_backend.store import Store
 
@@ -214,3 +215,68 @@ def test_mid_lap_progress_drop_is_still_rejected():
         finished = assembler.add(message) or finished
     assert finished is not None
     assert "progress_reset" in finished.invalid_reasons
+
+
+def test_synthetic_mclaren_pack_is_not_an_accreplay_download():
+    library = ReferenceLibrary()
+    listed = library.list_laps()
+    assert {item["id"] for item in listed} == {"synthetic-pro-spa-720s", "synthetic-user-spa-720s"}
+    assert {item["source"] for item in listed} == {"synthetic-test"}
+    pro = library.pro_for("assetto_corsa_competizione", "spa", "mclaren_720s_gt3_evo")
+    user = library.get("synthetic-user-spa-720s")
+    assert pro is not None and user is not None
+    assert "not an accreplay download" in pro.note.lower()
+    rows = [
+        {
+            "normalized_progress": sample.progress,
+            "brake": sample.brake,
+            "speed_mps": sample.speed_mps,
+            "steering": sample.steering,
+            "throttle": sample.throttle,
+        }
+        for sample in user.samples
+    ]
+    compared = compare_pro(
+        rows,
+        pro,
+        game=pro.game,
+        track_id=pro.track_id,
+        car_model=pro.car_model,
+        lap_time_ms=user.lap_time_ms,
+    )
+    assert compared["recommendation_allowed"] is True
+    assert "0.40" in compared["spoken_text"]
+    steering = next(tip for tip in compared["tips"] if tip["rule_id"] == "steering_peak")
+    assert steering["recommendation_allowed"] is False
+    other_game = compare_pro(
+        rows,
+        pro,
+        game="assetto_corsa",
+        track_id="spa",
+        car_model="ks_ferrari_488_gt3",
+        lap_time_ms=user.lap_time_ms,
+    )
+    assert other_game["available"] is False
+    assert other_game["recommendation_allowed"] is False
+    flags = grip_flags([sample.model_dump() for sample in user.samples])
+    assert flags[0]["kind"] == "high_slip"
+    assert flags[0]["recommendation_allowed"] is False
+
+
+def test_history_reference_survives_a_new_session_and_pro_file_does_not_apply(tmp_path):
+    store = Store(tmp_path)
+    for message in synthetic_session():
+        store.ingest(message)
+    store._agents.clear()
+    store._keys.clear()
+    store._assemblers.clear()
+    for message in synthetic_session():
+        store.ingest(message)
+    sessions = store.sessions()
+    assert len(sessions) == 2
+    latest = [lap for lap in store.laps(sessions[1]["id"]) if lap["valid"]][-1]
+    benchmark = store.benchmark(latest["id"])
+    assert benchmark["personal"]["available"] is True
+    assert benchmark["personal"]["reference_lap_id"]
+    assert benchmark["pro"]["reason"] == "no_pro_reference"
+    assert benchmark["pro"]["recommendation_allowed"] is False

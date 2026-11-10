@@ -117,6 +117,19 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
             raise HTTPException(404, "lap not found")
         return report
 
+    @app.get("/api/v1/laps/{lap_id}/benchmark")
+    def lap_benchmark(lap_id: str, request: Request) -> dict:
+        _authorize(request)
+        report = request.app.state.store.benchmark(lap_id)
+        if report is None:
+            raise HTTPException(404, "lap not found")
+        return report
+
+    @app.get("/api/v1/references")
+    def references(request: Request) -> dict:
+        _authorize(request)
+        return {"references": request.app.state.store.references.list_laps()}
+
     @app.get("/api/v1/tracks")
     def tracks(request: Request) -> dict:
         _authorize(request)

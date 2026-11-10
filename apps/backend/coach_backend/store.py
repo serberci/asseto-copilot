@@ -17,6 +17,7 @@ from telemetry_schema.models import gear_label
 from coach_backend.assembler import LapAssembler
 from coach_backend.coaching import Scheduler, build_report
 from coach_backend.copilot import ask
+from coach_backend.references import ReferenceLibrary, compare_pro, grip_flags
 from coach_backend.tracks import TrackLibrary
 
 PARQUET_SCHEMA = pa.schema(
@@ -46,6 +47,7 @@ class Store:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.tracks = TrackLibrary(data_dir)
+        self.references = ReferenceLibrary()
         self.model = model
         self.scheduler = Scheduler()
         self._lock = threading.Lock()
@@ -135,6 +137,47 @@ class Store:
             "report": _public_report(report),
         }
 
+    def benchmark(self, lap_id: str) -> dict | None:
+        lap = self._connection.execute("SELECT * FROM laps WHERE id = ?", (lap_id,)).fetchone()
+        if lap is None:
+            return None
+        session = self.session(lap["session_id"])
+        if session is None:
+            return None
+        personal = self.analysis(lap_id)
+        report = None if personal is None else personal.get("report")
+        rows = read_parquet(Path(lap["parquet_path"])) if lap["parquet_path"] else []
+        payloads = [json.loads(row["payload_json"]) for row in rows if row.get("payload_json")]
+        pro_lap = self.references.pro_for(session["game"], session["track_id"], session["car_model"])
+        if pro_lap is None:
+            pro = {
+                "available": False,
+                "reason": "no_pro_reference",
+                "recommendation_allowed": False,
+                "spoken_text": "No pro file matches this game, track, and car.",
+                "tips": [],
+            }
+        else:
+            pro = compare_pro(
+                rows,
+                pro_lap,
+                game=session["game"],
+                track_id=session["track_id"],
+                car_model=session["car_model"],
+                lap_time_ms=lap["lap_time_ms"],
+            )
+        return {
+            "lap_id": lap_id,
+            "personal": {
+                "available": report is not None,
+                "reference_lap_id": None if personal is None else personal.get("reference_lap_id"),
+                "time_loss_s": None if report is None else report.get("time_loss_s"),
+                "tips": [] if report is None else report.get("events") or [],
+            },
+            "pro": pro,
+            "grip": grip_flags(payloads),
+        }
+
     def context(self, session_id: str | None) -> dict:
         if session_id is None:
             session_id = self.live.get("session_id")
@@ -143,10 +186,10 @@ class Store:
             return {"available": False}
         lap_rows = self.laps(session_id)
         valid = [lap for lap in lap_rows if lap["valid"]]
-        best = min(valid, key=lambda lap: lap["lap_time_ms"] or 10**12) if valid else None
         latest = valid[-1] if valid else None
+        reference = self._reference_row(session_id, exclude=latest["id"]) if latest else None
         delta: dict = {"available": False, "reason": "no_reference_lap"}
-        if latest and best and latest["id"] != best["id"]:
+        if latest and reference is not None:
             analysed = self.analysis(latest["id"])
             report = analysed["report"] if analysed else None
             corner = report["corners"][0] if report and report["corners"] else {}
@@ -156,7 +199,7 @@ class Store:
                 "time_loss_s": loss,
                 "corner_id": corner.get("corner_id"),
                 "corner_name": corner.get("name"),
-                "reference_lap_time_s": None if best["lap_time_ms"] is None else round(best["lap_time_ms"] / 1000, 3),
+                "reference_lap_time_s": None if reference["lap_time_ms"] is None else round(reference["lap_time_ms"] / 1000, 3),
                 "latest_lap_time_s": None if latest["lap_time_ms"] is None else round(latest["lap_time_ms"] / 1000, 3),
             }
         return {
@@ -174,9 +217,11 @@ class Store:
             },
             "lap_delta": delta,
             "best_lap": {
-                "available": best is not None,
-                "lap_number": None if best is None else best["lap_number"],
-                "lap_time_s": None if best is None or best["lap_time_ms"] is None else round(best["lap_time_ms"] / 1000, 3),
+                "available": reference is not None,
+                "lap_number": None if reference is None else reference["lap_number"],
+                "lap_time_s": None
+                if reference is None or reference["lap_time_ms"] is None
+                else round(reference["lap_time_ms"] / 1000, 3),
             },
             "recent_coaching": self.coaching(session_id)[-8:],
         }
@@ -325,7 +370,7 @@ class Store:
         self._connection.commit()
 
     def _reference_row(self, session_id: str, exclude: str):
-        session = self._connection.execute("SELECT reference_lap_id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        session = self._connection.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if session and session["reference_lap_id"] and session["reference_lap_id"] != exclude:
             chosen = self._connection.execute(
                 "SELECT * FROM laps WHERE id = ? AND valid = 1",
@@ -333,11 +378,15 @@ class Store:
             ).fetchone()
             if chosen is not None:
                 return chosen
+        if session is None:
+            return None
         return self._connection.execute(
-            """SELECT * FROM laps
-               WHERE session_id = ? AND valid = 1 AND id != ? AND lap_time_ms IS NOT NULL
-               ORDER BY lap_time_ms ASC LIMIT 1""",
-            (session_id, exclude),
+            """SELECT laps.* FROM laps
+               JOIN sessions ON sessions.id = laps.session_id
+               WHERE sessions.game = ? AND sessions.track_id = ? AND sessions.car_model = ?
+                 AND laps.valid = 1 AND laps.id != ? AND laps.lap_time_ms IS NOT NULL
+               ORDER BY laps.lap_time_ms ASC LIMIT 1""",
+            (session["game"], session["track_id"], session["car_model"], exclude),
         ).fetchone()
 
     def _track(self, session_id: str):
