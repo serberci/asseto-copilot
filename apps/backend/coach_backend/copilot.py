@@ -8,6 +8,7 @@ import re
 from typing import Protocol
 
 NUMBER = re.compile(r"(?<![\w.])(-?\d+(?:\.\d+)?)")
+TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?")
 
 SYSTEM_PROMPT = """You are a concise racing engineer for the original Assetto Corsa.
 Use only the numbers in the supplied context. Never invent telemetry.
@@ -52,7 +53,7 @@ def numbers_in(text: str) -> list[float]:
 
 
 def is_grounded(spoken: str, evidence: dict) -> bool:
-    allowed = numbers_in(json.dumps(evidence, default=str))
+    allowed = numbers_in(TIMESTAMP.sub(" ", json.dumps(evidence, default=str)))
     for number in numbers_in(spoken):
         if not any(math.isclose(number, candidate, rel_tol=0.02, abs_tol=0.05) for candidate in allowed):
             return False
