@@ -14,4 +14,8 @@ Not done, because this machine is not the gaming PC and no model was benchmarked
 - A real track file. `synthetic-oval` is the only calibrated track, and it is fake.
 - A real pro trace. The McLaren files in `track_data/references/` are synthetic test data, not an ACCReplay download.
 
+## 2026-11-10
+
+The host token is the administrator. Each driver has a separate token and only sees their own sessions. A lap benchmark now has three comparisons: that driver's history, the fastest lap by another driver on the same game, track, and car, and a matching pro file. Laps recorded before a driver existed stay unassigned until the administrator claims them.
+
 The next human step is the live diagnose on Windows, then a real track file for one car and one circuit.

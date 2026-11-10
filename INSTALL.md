@@ -31,7 +31,13 @@ npm install
 npm run build
 ```
 
-Start the host again from the repository root. It serves `apps/frontend/dist` when that build exists. Open `http://127.0.0.1:8080/`, paste the token, and choose Connect.
+Start the host again from the repository root. It serves `apps/frontend/dist` when that build exists. The first start writes `data/admin.password`. Open `http://127.0.0.1:8080/` and log in as `administrator` with that password.
+
+On Account, create a driver with a name and a password. Tell them the password. They log in and open Account, then choose Generate agent token. The token is shown once. Paste it into the Windows agent. The agent uses that token and does not accept the name and password. If the token is lost, generate another one and paste the new value into the agent. The previous token stops working.
+
+Laps recorded with the host token belong to nobody until an administrator assigns them. Account lists every lap. Choose a driver, or Unassigned, and choose Assign. Assign unassigned laps still attaches a whole session that has no per-lap choice. Delete removes the account and leaves the laps unassigned. Revoke login keeps the account and the laps.
+
+The dashboard has four tabs. Current Session is the live car. Laps lists that driver's laps and can filter by track. Opening a valid lap shows the three comparisons: their own reference, the fastest lap by another driver on the same game, track, and car, and a pro file when those three match. Performance shows valid lap times on one track and the change from the previous valid lap. A lower time is faster.
 
 For frontend development, run `npm run dev` in `apps/frontend` and open `http://127.0.0.1:5173/`. Vite forwards `/api` and `/ws` to port 8080.
 
@@ -42,9 +48,12 @@ This does not need the game. With the host running:
 ```sh
 export COACH_AUTH_TOKEN="choose-a-long-token"
 uv run python scripts/replay_fixture.py
+uv run python scripts/replay_fixture.py --pro
 ```
 
-Reload the dashboard. You should see track `synthetic-oval`, car `synthetic-car`, two valid laps (30.000 s and 30.400 s), a delta near `+0.400`, and coaching lines. Ask `where am I losing time`. The answer quotes the recorded loss and names the model `deterministic-explainer`.
+Reload the dashboard. The first command records track `synthetic-oval`, car `synthetic-car`, two valid laps (30.000 s and 30.400 s), a delta near `+0.400`, and coaching lines. Ask `where am I losing time`. The answer quotes the recorded loss and names the model `deterministic-explainer`.
+
+`--pro` records the synthetic McLaren 720S GT3 Evo lap at Spa. Open that lap to see the difference against the bundled pro file. It is test data, not a recorded Spa lap.
 
 `synthetic-oval` is not a real circuit. Do not copy its corner progress onto a real track.
 

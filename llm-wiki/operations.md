@@ -16,6 +16,8 @@ export COACH_DATA_DIR="$PWD/data"
 uv run coach-backend
 ```
 
+Log in to the dashboard as `administrator` with the password in `data/admin.password`. A driver generates an agent token on Account. Replaying with the host token stores a session that belongs to no driver.
+
 In another shell, with the same token:
 
 ```sh

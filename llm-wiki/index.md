@@ -18,3 +18,4 @@ Notes for a later session. The code and the tests win if a page disagrees with t
 - [0004 The model does not see the database](decisions/0004-model-boundary.md)
 - [0005 Track files are not guessed](decisions/0005-tracks.md)
 - [0006 Pro laps are files we are allowed to keep](decisions/0006-references.md)
+- [0007 A driver token is not the host token](decisions/0007-drivers.md)

@@ -5,7 +5,7 @@ Every message is a JSON object:
 | Field | Meaning |
 |---|---|
 | `schema_version` | `1.0.0` only, until a later version is added on purpose |
-| `game` | `assetto_corsa` |
+| `game` | `assetto_corsa` from the Windows agent. A synthetic replay of the bundled McLaren lap uses `assetto_corsa_competizione` so the host can compare it with that pro file. The agent does not read Competizione shared memory. |
 | `agent_id` | Stable id from the agent settings |
 | `session_id` | Null until the host has opened a session; then the host's id |
 | `sequence` | Increases by one for each message from this agent process. A hello on reconnect uses the next number. It does not restart at zero. |
@@ -13,7 +13,7 @@ Every message is a JSON object:
 | `type` | `hello`, `telemetry`, `heartbeat`, or `goodbye` |
 | `payload` | The object for that type |
 
-Unknown fields are rejected. A naive timestamp is rejected. The host replies on the telemetry socket with `{"type":"ack","sequence":...,"session_id":...}` or `{"type":"error","detail":...}`. A bad token closes the socket with code 1008. The token is `Authorization: Bearer <token>` for the agent, or `?token=` for the dashboard because a browser socket cannot set that header.
+Unknown fields are rejected. A naive timestamp is rejected. The host replies on the telemetry socket with `{"type":"ack","sequence":...,"session_id":...}` or `{"type":"error","detail":...}`. A bad token closes the socket with code 1008. The agent sends `Authorization: Bearer <token>`. The dashboard socket sends the `coach_session` cookie. `?token=` is still accepted.
 
 A telemetry sample is published when the physics page or the graphics page has a new `packetId`. A repeated packet id is stale and is not sent as a fresh sample. Both flags are still on the sample when one side moved and the other did not.
 
@@ -59,23 +59,37 @@ Coaching may describe a brake point. It may recommend treating the reference as 
 
 ## HTTP
 
-All `/api/v1` routes except `GET /api/v1/health` require the bearer token.
+All `/api/v1` routes except `GET /api/v1/health` and `POST /api/v1/login` require a credential. The dashboard sends the `coach_session` cookie. The Windows agent sends `Authorization: Bearer` with the agent token. The host token is the administrator for setup calls and does not own laps. A driver who asks for another driver's session or lap receives 404. Driver management routes return 403 for a driver.
 
 | Method | Path | Body / result |
 |---|---|---|
 | GET | `/api/v1/health` | `{status, version}` |
-| GET | `/api/v1/live` | Current session, telemetry, laps, coaching |
+| POST | `/api/v1/login` | `{"display_name", "password"}`. Sets the httpOnly cookie `coach_session`. A wrong name or password is 401 with `The name or password is wrong`. |
+| POST | `/api/v1/logout` | Clears that cookie. |
+| GET | `/api/v1/me` | `{role, driver_id, display_name}`. `role` is `administrator` or `driver`. Accepts the session cookie or a bearer token. The body never includes an agent token. |
+| POST | `/api/v1/agent-token` | A logged-in driver. Returns `{token}` once. The host stores only a hash. A later call replaces the token and the previous value is refused. |
+| GET | `/api/v1/drivers` | Administrator. `{drivers: [{id, display_name, created_at, revoked}]}`. No token is returned. |
+| POST | `/api/v1/drivers` | Administrator. `{"display_name", "password"}`. Response `{id, display_name, role}`. The password is not returned. |
+| POST | `/api/v1/drivers/{id}/revoke` | Administrator. The driver can no longer connect. Laps stay with that name. |
+| DELETE | `/api/v1/drivers/{id}` | Administrator. Removes the account and login. Their laps become unassigned. The telemetry stays. The administrator account cannot be deleted. |
+| POST | `/api/v1/drivers/{id}/claim-unassigned` | Administrator. Sessions recorded with the administrator token get this `driver_id`. Response `{id, sessions}`. A lap already given to a driver stays with that driver. |
+| POST | `/api/v1/laps/{id}/assign` | Administrator. `{"driver_id"}` or `{"driver_id": null}` to leave the lap unassigned. |
+| GET | `/api/v1/live` | Current session, telemetry, laps, coaching. A driver sees only their own. |
 | GET | `/api/v1/sessions` | Session list |
 | GET | `/api/v1/sessions/{id}` | One session |
 | GET | `/api/v1/sessions/{id}/laps` | Lap rows |
 | GET | `/api/v1/sessions/{id}/coaching` | Coaching rows |
 | POST | `/api/v1/sessions/{id}/reference` | `{"lap_id"}` |
-| GET | `/api/v1/laps/{id}/analysis` | Recomputed delta, corners, events |
+| GET | `/api/v1/laps` | The caller's laps. Optional `track_id`. An administrator sees every driver's laps. |
+| GET | `/api/v1/performance` | Required `track_id`. Valid laps for the logged-in driver, oldest first. `improvement_s` is the previous lap time minus this one. Positive means faster. The first lap has `null`. |
+| GET | `/api/v1/laps/{id}/analysis` | Recomputed delta, corners, events against that driver's own reference lap |
+| GET | `/api/v1/laps/{id}/benchmark` | `personal`, `others`, and `pro`. `others` is the fastest valid lap by a different driver in the same game, track, and car. `pro` is a bundled file with the same identity. |
+| GET | `/api/v1/references` | Pro files. Sample arrays are omitted. |
 | GET | `/api/v1/tracks` | Bundled and user track files. Names starting with `_` are templates and are omitted. `calibrated: false` is listed and is not used for coaching. |
 | POST | `/api/v1/copilot/ask` | `{"question", "session_id"}` |
 | POST | `/api/v1/replay` | `{"jsonl"}` of protocol messages |
 | WS | `/ws/telemetry` | Agent stream |
-| WS | `/ws/dashboard?token=` | Snapshot on connect, then on each accepted agent message |
+| WS | `/ws/dashboard` | Snapshot on connect, then on each accepted agent message. The browser sends the session cookie. |
 | WS | `/ws/audio` | JSON `{"pcm_hex", "sample_rate", "session_id"}` |
 
 `fixtures/synthetic-session.jsonl` is a protocol recording of two synthetic laps. `fixtures/page-sample.json` is a shared-memory page image for `coach-agent --fixture`, not a protocol recording.
