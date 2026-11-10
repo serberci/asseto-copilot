@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
-from telemetry_schema import synthetic_session
+from telemetry_schema import reference_session, synthetic_session
 from telemetry_schema.messages import SCHEMA_VERSION
 
 from coach_backend.analysis import CornerMetrics
@@ -263,6 +263,27 @@ def test_synthetic_mclaren_pack_is_not_an_accreplay_download():
     assert flags[0]["recommendation_allowed"] is False
 
 
+def test_replayed_mclaren_lap_is_compared_with_the_pro_file(tmp_path):
+    library = ReferenceLibrary()
+    user = library.get("synthetic-user-spa-720s")
+    assert user is not None
+    store = Store(tmp_path)
+    for message in reference_session(
+        game=user.game,
+        track_id=user.track_id,
+        car_model=user.car_model,
+        lap_time_ms=user.lap_time_ms,
+        samples=[sample.model_dump() for sample in user.samples],
+    ):
+        store.ingest(message)
+    lap = next(item for item in store.laps(store.sessions()[0]["id"]) if item["valid"])
+    benchmark = store.benchmark(lap["id"])
+    assert benchmark["pro"]["available"] is True
+    assert "pro file" in benchmark["pro"]["spoken_text"]
+    assert "0.40" in benchmark["pro"]["spoken_text"]
+    assert benchmark["grip"][0]["kind"] == "high_slip"
+
+
 def test_history_reference_survives_a_new_session_and_pro_file_does_not_apply(tmp_path):
     store = Store(tmp_path)
     for message in synthetic_session():
@@ -280,3 +301,110 @@ def test_history_reference_survives_a_new_session_and_pro_file_does_not_apply(tm
     assert benchmark["personal"]["reference_lap_id"]
     assert benchmark["pro"]["reason"] == "no_pro_reference"
     assert benchmark["pro"]["recommendation_allowed"] is False
+    assert benchmark["others"]["reason"] == "no_driver"
+
+
+def test_drivers_keep_their_laps_and_compare_with_each_other(tmp_path):
+    settings = Settings(data_dir=tmp_path, auth_token="test-token", ollama_host=None, ollama_model="", static_dir=None)
+    app = create_app(settings, Store(tmp_path))
+    client = TestClient(app)
+    ava_client = TestClient(app)
+    admin = {"Authorization": "Bearer test-token"}
+    assert client.post("/api/v1/drivers", json={"display_name": "Ava", "password": "trackday-1"}).status_code == 401
+    refused = client.post("/api/v1/login", json={"display_name": "Ava", "password": "wrong-password"})
+    assert refused.status_code == 401
+    assert refused.json()["detail"] == "The name or password is wrong"
+    ava = client.post("/api/v1/drivers", headers=admin, json={"display_name": "Ava", "password": "trackday-1"})
+    assert ava.status_code == 201
+    assert "token" not in ava.json()
+    bea = client.post("/api/v1/drivers", headers=admin, json={"display_name": "Bea", "password": "trackday-2"}).json()
+    logged_in = ava_client.post("/api/v1/login", json={"display_name": "Ava", "password": "trackday-1"})
+    assert logged_in.json()["display_name"] == "Ava"
+    assert "token" not in ava_client.get("/api/v1/me").json()
+    first_token = ava_client.post("/api/v1/agent-token").json()["token"]
+    second_token = ava_client.post("/api/v1/agent-token").json()["token"]
+    assert client.get("/api/v1/me", headers={"Authorization": f"Bearer {first_token}"}).status_code == 401
+    ava_headers = {"Authorization": f"Bearer {second_token}"}
+    bea_client = TestClient(app)
+    bea_client.post("/api/v1/login", json={"display_name": "Bea", "password": "trackday-2"})
+    bea_headers = {"Authorization": f"Bearer {bea_client.post('/api/v1/agent-token').json()['token']}"}
+    assert client.post("/api/v1/drivers", headers=ava_headers, json={"display_name": "Nope", "password": "trackday-3"}).status_code == 403
+    listed = client.get("/api/v1/drivers", headers=admin).json()["drivers"]
+    assert [item["display_name"] for item in listed] == ["Ava", "Bea"]
+    assert client.get("/api/v1/me", headers=ava_headers).json()["role"] == "driver"
+
+    body = "\n".join(item.model_dump_json() for item in synthetic_session())
+    claimed = client.post("/api/v1/replay", headers=admin, json={"jsonl": body}).json()["session_id"]
+    assert client.get(f"/api/v1/sessions/{claimed}", headers=bea_headers).status_code == 404
+    claim = client.post(f"/api/v1/drivers/{ava.json()['id']}/claim-unassigned", headers=admin)
+    assert claim.json()["sessions"] == 1
+    assert client.get(f"/api/v1/sessions/{claimed}", headers=ava_headers).status_code == 200
+    assert client.get(f"/api/v1/sessions/{claimed}", headers=bea_headers).status_code == 404
+
+    catalog = ava_client.get("/api/v1/laps", params={"track_id": "synthetic-oval"}).json()["laps"]
+    assert len([lap for lap in catalog if lap["valid"]]) == 2
+    assert ava_client.get("/api/v1/laps", params={"track_id": "imola"}).json()["laps"] == []
+    trend = ava_client.get("/api/v1/performance", params={"track_id": "synthetic-oval"}).json()["laps"]
+    assert trend[0]["lap_time_s"] == 30.0
+    assert trend[0]["improvement_s"] is None
+    assert trend[1]["improvement_s"] == pytest.approx(-0.4, abs=0.05)
+
+    bea_session = client.post("/api/v1/replay", headers=bea_headers, json={"jsonl": body}).json()["session_id"]
+    laps = client.get(f"/api/v1/sessions/{bea_session}/laps", headers=bea_headers).json()["laps"]
+    slower = [lap for lap in laps if lap["valid"]][-1]
+    benchmark = client.get(f"/api/v1/laps/{slower['id']}/benchmark", headers=bea_headers).json()
+    assert benchmark["personal"]["available"] is True
+    assert benchmark["others"]["driver_name"] == "Ava"
+    assert benchmark["others"]["time_loss_s"] == pytest.approx(0.4, abs=0.05)
+    assert benchmark["others"]["tips"][0]["spoken_text"].startswith("Against Ava:")
+    assert benchmark["pro"]["reason"] == "no_pro_reference"
+    assert client.get(f"/api/v1/laps/{slower['id']}/benchmark", headers=ava_headers).status_code == 404
+
+    assert ava_client.post("/api/v1/logout").json()["ok"] is True
+    assert ava_client.get("/api/v1/me").status_code == 401
+    assert client.post(f"/api/v1/drivers/{ava.json()['id']}/revoke", headers=admin).json()["revoked"] is True
+    assert client.get("/api/v1/me", headers=ava_headers).status_code == 401
+
+
+def test_admin_assigns_one_lap_and_deletes_the_driver(tmp_path):
+    settings = Settings(data_dir=tmp_path, auth_token="test-token", ollama_host=None, ollama_model="", static_dir=None)
+    app = create_app(settings, Store(tmp_path))
+    client = TestClient(app)
+    admin = {"Authorization": "Bearer test-token"}
+    ava = client.post("/api/v1/drivers", headers=admin, json={"display_name": "Ava", "password": "trackday-1"}).json()
+    bea = client.post("/api/v1/drivers", headers=admin, json={"display_name": "Bea", "password": "trackday-2"}).json()
+    body = "\n".join(item.model_dump_json() for item in synthetic_session())
+    client.post("/api/v1/replay", headers=admin, json={"jsonl": body})
+    valid = [lap for lap in client.get("/api/v1/laps", headers=admin).json()["laps"] if lap["valid"]]
+    assert valid[0]["driver_name"] is None
+
+    assigned = client.post(f"/api/v1/laps/{valid[0]['id']}/assign", headers=admin, json={"driver_id": ava["id"]})
+    assert assigned.json()["driver_id"] == ava["id"]
+    assert client.post(f"/api/v1/laps/{valid[1]['id']}/assign", headers=admin, json={"driver_id": bea["id"]}).status_code == 200
+    assert client.post("/api/v1/laps/missing/assign", headers=admin, json={"driver_id": ava["id"]}).status_code == 404
+
+    ava_client = TestClient(app)
+    ava_client.post("/api/v1/login", json={"display_name": "Ava", "password": "trackday-1"})
+    assert [lap["id"] for lap in ava_client.get("/api/v1/laps").json()["laps"]] == [valid[0]["id"]]
+    assert ava_client.get(f"/api/v1/laps/{valid[1]['id']}/benchmark").status_code == 404
+    assert ava_client.get(f"/api/v1/laps/{valid[0]['id']}/benchmark").status_code == 200
+    assert len(ava_client.get("/api/v1/performance", params={"track_id": "synthetic-oval"}).json()["laps"]) == 1
+    assert ava_client.delete(f"/api/v1/drivers/{bea['id']}").status_code == 403
+
+    assert client.post(f"/api/v1/laps/{valid[0]['id']}/assign", headers=admin, json={"driver_id": None}).json()["driver_id"] is None
+    cleared = {lap["id"]: lap for lap in client.get("/api/v1/laps", headers=admin).json()["laps"]}
+    assert cleared[valid[0]["id"]]["driver_name"] is None
+    client.post(f"/api/v1/laps/{valid[0]['id']}/assign", headers=admin, json={"driver_id": ava["id"]})
+
+    assert client.delete(f"/api/v1/drivers/{ava['id']}", headers=admin).json()["deleted"] is True
+    assert ava_client.get("/api/v1/me").status_code == 401
+    remaining = {lap["id"]: lap for lap in client.get("/api/v1/laps", headers=admin).json()["laps"]}
+    assert remaining[valid[0]["id"]]["driver_name"] is None
+    assert remaining[valid[1]["id"]]["driver_name"] == "Bea"
+    assert client.post("/api/v1/drivers", headers=admin, json={"display_name": "Ava", "password": "trackday-9"}).status_code == 201
+
+    password = (tmp_path / "admin.password").read_text(encoding="utf-8").strip()
+    desk = TestClient(app)
+    desk.post("/api/v1/login", json={"display_name": "administrator", "password": password})
+    administrator_id = desk.get("/api/v1/me").json()["driver_id"]
+    assert client.delete(f"/api/v1/drivers/{administrator_id}", headers=admin).status_code == 404
